@@ -76,6 +76,7 @@ AfuTeam Eslint Rules 是一个基于 eslint 的 __前端代码规范集合__。
 pnpm i @afuteam/eslint-plugin-fe@latest -D
 ```
 
+
 ## 配置
 
 在 `.eslintrc.js` 添加下面配置：
@@ -165,7 +166,7 @@ module.exports = {
 #### Vue2.x
 
 ```bash
-pnpm i eslint@7 babel-eslint@10 eslint-plugin-vue@9 vue-eslint-parser@9 -D
+pnpm i eslint@^7.32.0 babel-eslint@^10.1.0 eslint-plugin-vue@^9.19.2 vue-eslint-parser@^9.3.2 -D
 ```
 
 ```js
