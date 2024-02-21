@@ -1,20 +1,24 @@
 #!/usr/bin/env node
 
-// TODO
 const fs = require("fs");
 const path = require("path");
+const execSync = require('child_process').execSync;
 const { ESLint } = require("eslint");
 const LibRulesAndConfigs = require("../lib/index"); // lib定义的规则名称集
 const supportFileExtNames = require("../lib/execConfigs/supportFileExtNames"); // 支持的文件类型名后缀集合
 const BlackFilesList = require("../lib/execConfigs/BlackFilesList"); // 排除的路径集合
+const FileIgnoredList = require("../lib/execConfigs/FileIgnoredList"); // 排除的文件集合
 
-// const BlackFilesListArr = []; // 已排除的目录列表
 let targetPath = "";
 let type = "";
+let allowInlineConfig = false
 
 const filesToLint = [];
 
 const eslintInstances = {};
+
+//指定cloc在的路径
+const clocPath = path.join(__dirname, 'cloc');
 
 function generateEslintInstances() {
   const lintnames = Object.keys(LibRulesAndConfigs.configsFilePaths);
@@ -22,7 +26,8 @@ function generateEslintInstances() {
   for (const name of lintnames) {
     const pathToConfigFile = require.resolve(`@afuteam/eslint-plugin-fe/lib/configs/${name}.js`);
 
-    eslintInstances[name] = new ESLint({ overrideConfigFile: pathToConfigFile, useEslintrc: false});
+    // 禁止行内配置 allowInlineConfig
+    eslintInstances[name] = new ESLint({ overrideConfigFile: pathToConfigFile, useEslintrc: false, allowInlineConfig: allowInlineConfig, });
   }
 
 }
@@ -39,16 +44,27 @@ function handleSelectWhichEslintInstances(type, eslintInstances) {
   return eslintInstances[type] || "";
 }
 
-// TODO lintType 可能是多个，需要支持的，暂时不支持
+// 判断文件名后缀是否在黑名单
+function isFileIgnored(filePath) {
+  const fileName = path.basename(filePath);
+  return FileIgnoredList.some(blackName => fileName.endsWith(blackName));
+}
+
+// TODO lintType 暂不支持 多个，比如 Astro 类型的项目
 
 async function lintFiles(filePaths) {
 
   let totalErrors = 0;
   let totalWarnings = 0;
+  let totalBlankLines = 0; // 空行
+  let totalCommentLines = 0; // 注释行数
+  let totalCodeLines = 0; // 代码行数
 
   for (const filePath of filePaths) {
+    const curFileIsIgnored = isFileIgnored(filePath);
+
     const extName = path.extname(filePath).slice(1);
-    if (fileGroups[extName]) {
+    if (!curFileIsIgnored && fileGroups[extName]) {
       fileGroups[extName].push(filePath);
     }
   }
@@ -69,6 +85,7 @@ async function lintFiles(filePaths) {
         return
       }
 
+      // console.log(fileGroups[fileType])
       const results = await whichEslintInstances.lintFiles(
         fileGroups[fileType]
       );
@@ -82,14 +99,50 @@ async function lintFiles(filePaths) {
         });
         console.error(resultText);
       }
+
+
+      // 统计进行lint的代码行数
+      try {
+        // 对于文件名包含空格的需要 添加 引号 否则无法 cloc read，没有的话不用
+        const dealNameHasBlank = fileGroups[fileType].map((item) => {
+          // 如果字符串中有空格（即 /\s/ 的正则表达式有匹配结果），那么返回被引号包围的字符串
+          if (/\s/.test(item)) {
+            return `"${item}"`;
+          }
+          // 否则返回原始字符串
+          return item;
+        });
+        let filePathsStr = dealNameHasBlank.join(' ');
+
+        // let stdout = execSync(`cloc --json ${filePathsStr}`).toString();
+        // console.log('wow\n', JSON.parse(stdout))
+
+        let stdout = execSync(`${clocPath} --json ${filePathsStr}`).toString();
+        totalBlankLines += JSON.parse(stdout)['SUM']?.blank || 0
+        totalCommentLines += JSON.parse(stdout)['SUM']?.comment || 0
+        totalCodeLines += JSON.parse(stdout)['SUM']?.code || 0
+      } catch (error) {
+        console.warn('统计代码行数异常:\n', error);
+      }
+
+
     }
   }
 
-  console.log('Total 排除目录列表:', BlackFilesList);
-  console.log('Total 支持文件类型:', supportFileExtNames);
+  console.log('排除目录列表:\n', JSON.stringify(BlackFilesList));
+  console.log('排除文件名:', FileIgnoredList);
+  console.log('支持文件类型:', supportFileExtNames);
+  console.log('\n')
 
+  // WARN 这三行不可以省略和更改，npx 统计结果用
   console.log('Total errors:', totalErrors);
   console.log('Total warnings:', totalWarnings);
+  console.log('Total totalBlankLines:', totalBlankLines);
+  console.log('Total totalCommentLines:', totalCommentLines);
+  console.log('Total totalCodeLines:', totalCodeLines);
+
+  console.log('\n')
+
 
 }
 
@@ -123,11 +176,18 @@ function handleProcessArgv() {
     process.exit(0);   // 结束程序
   }
 
+  if(argv.allowInlineConfig === 'true') {
+    allowInlineConfig = true;
+  }
+
   if (argv.path) {
     targetPath = argv.path;
   }
   // TODO type 考虑是否支持组合，默认支持一种
   if (argv.type) {
+    if(argv.type.startsWith('error-')) {
+      type = 'js'
+    }
     type = argv.type;
   }
 }
@@ -142,10 +202,7 @@ function handleValidPathExtName(supportFileExtNames, targetPath) {
 function curPathIsBlackDirectory(targetPath) {
   const basename = path.basename(targetPath);
 
-  let isBlackFile = BlackFilesList.includes(basename)
-  // if(isBlackFile) {
-  //   BlackFilesListArr.push(basename)
-  // }
+  let isBlackFile = BlackFilesList.includes(basename) || basename.startsWith('.')
   return isBlackFile
 }
 

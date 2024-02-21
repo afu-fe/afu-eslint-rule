@@ -1,17 +1,37 @@
-const BaseOptions = require("../base.js");
+
+const ReactjsRules = require("../react-js.js");
 const JSRules = require("../js.js");
 
 module.exports = {
+  ...ReactjsRules,
   root: true,
-  parser: "vue-eslint-parser",
-  parserOptions: {
-    parser: "@typescript-eslint/parser",
+  env: {
+    browser: true,
+    es2021: true,
+    jest: true,
+    node: true,
   },
-  extends: ["plugin:vue/essential", "@vue/typescript/recommended"],
-  plugins: ["@typescript-eslint"],
+  extends: [...new Set([
+    ...ReactjsRules.extends,
+    "react-app",
+    "react-app/jest",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "plugin:import/typescript",
+  ])],
+  overrides: [],
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaVersion: "latest",
+    sourceType: "module",
+    // 下面两行都会报错，原因待查
+    // project: "./tsconfig.json",
+    // project: path.resolve(__dirname, 'tsconfig.json'),
+    tsconfigRootDir: __dirname,
+  },
+  plugins: [...new Set(["react", ...ReactjsRules.plugins])],
   rules: {
     ...JSRules.rules,
-
+    ...ReactjsRules.rules,
     'no-undef': 'off',
     'react/sort-comp': 'off',
     'dot-notation': 'off',
@@ -47,9 +67,5 @@ module.exports = {
     '@typescript-eslint/prefer-as-const': 'off', // error -> off
     '@typescript-eslint/prefer-namespace-keyword': 'off', // error -> off
     '@typescript-eslint/triple-slash-reference': 'off', // error -> off
-    "no-shadow": "off",
-    "@typescript-eslint/no-shadow": "error",
   },
-  ignorePatterns: BaseOptions.ignorePatterns,
-  noInlineConfig: BaseOptions.noInlineConfig,
 };
